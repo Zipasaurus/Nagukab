@@ -10,108 +10,92 @@ public class PlayerMovement2D_3D : MonoBehaviour
     [Header("Walking Delay")]
     public float walkGraceTime = 0.15f;
 
-    [Header("Visual / Metarig")]
-    public Transform visualRoot;
-    public bool enableFlip = true;
-
-    [Header("Walk Rotations")]
-    public Vector3 walkFacingRight = Vector3.zero;
-    public Vector3 walkFacingLeft = new Vector3(0f, 180f, 0f);
-
-    [Header("Sprint Rotations")]
-    public Vector3 sprintFacingRight = Vector3.zero;
-    public Vector3 sprintFacingLeft = new Vector3(0f, 180f, 0f);
-
     [Header("State (Read Only)")]
     public bool IsWalking;
     public bool IsSprinting;
 
-    public bool WalkLeft;
-    public bool WalkRight;
-
-    public bool SprintLeft;
-    public bool SprintRight;
+    // 8-Direction Movement Booleans
+    public bool MoveW, MoveWD, MoveD, MoveSD, MoveS, MoveSA, MoveA, MoveWA;
 
     private Rigidbody rb;
     private Animator animator;
 
     private float horizontalInput;
+    private float verticalInput;
     private float walkTimer;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
         animator = GetComponentInChildren<Animator>();
-
-      
-
-        if (visualRoot == null)
-            Debug.LogWarning("Visual Root (Metarig) not assigned on " + gameObject.name);
     }
 
     void Update()
     {
-        horizontalInput = Input.GetAxisRaw("Horizontal");
+        // Get both Horizontal (A/D) and Vertical (W/S) input
+        horizontalInput = Input.GetAxisRaw("Horizontal"); 
+        verticalInput = Input.GetAxisRaw("Vertical");     
+
+        Vector3 moveInput = new Vector3(horizontalInput, 0, verticalInput);
 
         // Walking grace buffer
-        if (horizontalInput != 0)
+        if (moveInput != Vector3.zero)
             walkTimer = walkGraceTime;
         else
             walkTimer -= Time.deltaTime;
 
         IsWalking = walkTimer > 0f;
-        IsSprinting = IsWalking && Input.GetKey(KeyCode.LeftShift);
 
-        // Reset all direction states
-        WalkLeft = WalkRight = SprintLeft = SprintRight = false;
+        // --- SPRINTING DISABLED WHEN HOLDING ---
+        bool isHoldingBox = animator.GetBool("IsHolding");
+        IsSprinting = IsWalking && Input.GetKey(KeyCode.LeftShift) && !isHoldingBox;
+        // ---------------------------------------
 
-        if (IsSprinting)
+        // Reset all 8-direction booleans
+        MoveW = MoveWD = MoveD = MoveSD = MoveS = MoveSA = MoveA = MoveWA = false;
+
+        // Set the correct direction boolean based on input combination
+        if (IsWalking)
         {
-            SprintLeft  = horizontalInput < 0f;
-            SprintRight = horizontalInput > 0f;
-        }
-        else if (IsWalking)
-        {
-            WalkLeft  = horizontalInput < 0f;
-            WalkRight = horizontalInput > 0f;
+            // UP directions
+            if (verticalInput > 0f && horizontalInput == 0f) MoveW = true;
+            else if (verticalInput > 0f && horizontalInput > 0f) MoveWD = true;
+            else if (verticalInput > 0f && horizontalInput < 0f) MoveWA = true;
+
+            // DOWN directions
+            else if (verticalInput < 0f && horizontalInput == 0f) MoveS = true;
+            else if (verticalInput < 0f && horizontalInput > 0f) MoveSD = true;
+            else if (verticalInput < 0f && horizontalInput < 0f) MoveSA = true;
+
+            // LEFT/RIGHT directions
+            else if (verticalInput == 0f && horizontalInput > 0f) MoveD = true;
+            else if (verticalInput == 0f && horizontalInput < 0f) MoveA = true;
         }
 
-        // Animator parameters
+        // --- ANIMATOR PARAMETERS ---
         animator.SetBool("Walking", IsWalking && !IsSprinting);
         animator.SetBool("Sprinting", IsSprinting);
 
-        animator.SetBool("WalkLeft", WalkLeft);
-        animator.SetBool("WalkRight", WalkRight);
-        animator.SetBool("SprintLeft", SprintLeft);
-        animator.SetBool("SprintRight", SprintRight);
-
-        HandleVisualRotation();
+        // 8-Direction Booleans
+        animator.SetBool("W", MoveW);
+        animator.SetBool("WD", MoveWD);
+        animator.SetBool("D", MoveD);
+        animator.SetBool("SD", MoveSD);
+        animator.SetBool("S", MoveS);
+        animator.SetBool("SA", MoveSA);
+        animator.SetBool("A", MoveA);
+        animator.SetBool("WA", MoveWA);
     }
 
     void FixedUpdate()
     {
         float speed = IsSprinting ? sprintSpeed : walkSpeed;
-        rb.velocity = new Vector3(horizontalInput * speed, rb.velocity.y, 0f);
-    }
+        
+        // Combine inputs and normalize so diagonals aren't faster
+        Vector3 moveInput = new Vector3(horizontalInput, 0, verticalInput);
+        Vector3 moveDirection = moveInput.normalized;
 
-    void HandleVisualRotation()
-    {
-        if (!enableFlip || visualRoot == null || horizontalInput == 0)
-            return;
-
-        bool facingRight = horizontalInput > 0f;
-
-        if (IsSprinting)
-        {
-            visualRoot.localRotation = Quaternion.Euler(
-                facingRight ? sprintFacingRight : sprintFacingLeft
-            );
-        }
-        else if (IsWalking)
-        {
-            visualRoot.localRotation = Quaternion.Euler(
-                facingRight ? walkFacingRight : walkFacingLeft
-            );
-        }
+        // Apply velocity to X and Z axes
+        rb.velocity = new Vector3(moveDirection.x * speed, rb.velocity.y, moveDirection.z * speed);
     }
 }
