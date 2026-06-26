@@ -5,14 +5,18 @@ TagManager:
   serializedVersion: 2
   tags:
   - Pickupable
+  - NoSprint
+  - Battery
+  - Floor/Wall
+  - Debris
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Player
   - Water
   - UI
-  - 
+  - Debris
   - 
   - 
   - 

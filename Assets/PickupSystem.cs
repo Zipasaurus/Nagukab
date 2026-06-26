@@ -11,7 +11,7 @@ public class PickupSystem : MonoBehaviour
     public float inputCooldown = 0.1f;
     
     [Tooltip("Set to 1 if your Pickup/Drop animations are on the UpperBody layer. Set to 0 if they are on the Base Layer.")]
-    public int animationLayerIndex = 1; 
+    public int animationLayerIndex = 0; 
 
     private bool isHolding = false;
     private bool isBusy = false; 
@@ -21,14 +21,8 @@ public class PickupSystem : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.E) && !isBusy)
         {
-            if (!isHolding)
-            {
-                StartCoroutine(PickupRoutine());
-            }
-            else if (isHolding)
-            {
-                StartCoroutine(DropRoutine());
-            }
+            if (!isHolding) StartCoroutine(PickupRoutine());
+            else if (isHolding) StartCoroutine(DropRoutine());
         }
     }
 
@@ -37,29 +31,19 @@ public class PickupSystem : MonoBehaviour
         isBusy = true; 
         
         animator.SetBool("Pickup", true);
-        yield return new WaitForSeconds(animator.GetCurrentAnimatorStateInfo(animationLayerIndex).length);
+        yield return SafeWaitForAnimation(animationLayerIndex);
         animator.SetBool("Pickup", false);
 
         if (currentTarget != null)
         {
-            // --- 1. SAVE THE CUBE'S CURRENT ROTATION ---
             Quaternion originalRotation = currentTarget.transform.rotation;
-
-            // 2. Parent the object to the hand
             currentTarget.transform.SetParent(holdPoint);
-
-            // 3. Snap it to the hand's position
             currentTarget.transform.localPosition = Vector3.zero;
-
-            // --- 4. RESTORE THE CUBE'S ORIGINAL ROTATION ---
             currentTarget.transform.rotation = originalRotation;
-            // ---------------------------------------------
 
-            // Disable Physics
             Rigidbody rb = currentTarget.GetComponent<Rigidbody>();
             if (rb != null) rb.isKinematic = true;
 
-            // Disable Collider
             Collider col = currentTarget.GetComponent<Collider>();
             if (col != null) col.enabled = false;
             
@@ -69,8 +53,7 @@ public class PickupSystem : MonoBehaviour
         else
         {
             animator.SetBool("NoBox", true);
-            yield return null; 
-            yield return new WaitForSeconds(animator.GetCurrentAnimatorStateInfo(animationLayerIndex).length);
+            yield return SafeWaitForAnimation(animationLayerIndex);
             animator.SetBool("NoBox", false);
         }
 
@@ -81,33 +64,32 @@ public class PickupSystem : MonoBehaviour
     private IEnumerator DropRoutine()
     {
         isBusy = true; 
-
         animator.SetBool("Drop", true);
+        Debug.Log("🟢 DROP STARTED: Bool is now TRUE"); // DETECTIVE LOG
 
         if (currentTarget != null)
         {
-            // Unparent immediately (true = keep world position AND rotation)
             currentTarget.transform.SetParent(null, true); 
             
-            // Re-enable Physics
             Rigidbody rb = currentTarget.GetComponent<Rigidbody>();
             if (rb != null) 
             {
                 rb.isKinematic = false;
-                rb.velocity = Vector3.zero; // Reset velocity so it doesn't inherit weird movement
+                rb.velocity = Vector3.zero; 
             }
 
-            // Re-enable Collider
             Collider col = currentTarget.GetComponent<Collider>();
             if (col != null) col.enabled = true;
-
-            isHolding = false;
-            animator.SetBool("IsHolding", false);
-
-            currentTarget = null; 
         }
 
-        yield return new WaitForSeconds(animator.GetCurrentAnimatorStateInfo(animationLayerIndex).length);
+        isHolding = false;
+        animator.SetBool("IsHolding", false);
+        currentTarget = null; 
+
+        // WAIT FOR ANIMATION (Now with a hard cap so it never freezes!)
+        yield return SafeWaitForAnimation(animationLayerIndex);
+        
+        Debug.Log("🔴 DROP FINISHED: Bool is now FALSE"); // DETECTIVE LOG
         animator.SetBool("Drop", false);
 
         yield return new WaitForSeconds(inputCooldown);
@@ -124,10 +106,42 @@ public class PickupSystem : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        // If we are already holding the object, IGNORE the exit trigger!
         if (!isHolding && other.gameObject == currentTarget)
         {
             currentTarget = null;
         }
+    }
+
+    // ==========================================
+    // --- BULLETPROOF ANIMATION WAIT (V2) ---
+    // ==========================================
+    private IEnumerator SafeWaitForAnimation(int layer)
+    {
+        if (animator == null) yield break;
+        if (layer >= animator.layerCount) layer = 0;
+
+        // Wait 1 frame for the transition to start
+        yield return null;
+
+        float length = 0.5f; // Default fallback
+        
+        try 
+        {
+            length = animator.GetCurrentAnimatorStateInfo(layer).length;
+        } 
+        catch 
+        {
+            Debug.LogWarning("PickupSystem: Could not read animation length. Using 0.5s fallback.");
+        }
+
+        // --- THE FIX: HARD CAP THE WAIT TIME ---
+        // If Unity returns 0, a negative number, or Infinity, we force it to 0.5 seconds.
+        // It will NEVER wait more than 1 second, preventing the script from freezing!
+        if (length <= 0f || length > 1f) 
+        {
+            length = 0.5f; 
+        }
+
+        yield return new WaitForSeconds(length);
     }
 }
